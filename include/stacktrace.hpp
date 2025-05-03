@@ -12,6 +12,8 @@
 #include <iostream>
 #include <algorithm>
 #include <array>
+#include <fstream>
+#include <limits.h>
 #include <execinfo.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -64,6 +66,35 @@ inline bool is_pie_binary(const char* path) {
     }
     close(fd);
     return ehdr.e_type == ET_DYN;
+}
+
+// 获取主程序基地址
+inline uintptr_t get_exe_base() {
+    char exe_path[PATH_MAX] = {};
+    ssize_t len = ::readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+    if (len <= 0) return 0;
+    exe_path[len] = '\0';
+
+    std::ifstream maps("/proc/self/maps");
+    std::string line;
+    while (std::getline(maps, line)) {
+        std::istringstream iss(line);
+        std::string addr_range, perms, offset, dev, inode, path;
+
+        // eg. 00400000-00401000 r--p 00000000 08:10 1487 /path/to/test
+        if (! (iss >> addr_range >> perms >> offset >> dev >> inode)) continue;
+        std::getline(iss, path); // 路径可能带空格, 因此单独获取
+        path.erase(0, path.find_first_not_of(' ')); // trim leading spaces
+        if (path != exe_path) continue; // 只找主程序
+
+        size_t dash = addr_range.find('-');
+        if (dash == std::string::npos) continue;
+
+        std::string start_addr_str = addr_range.substr(0, dash);
+        uintptr_t start_addr = std::stoull(start_addr_str, nullptr, 16);
+        return start_addr;
+    }
+    return 0;
 }
 
 inline size_t estimate_exe_size(const char* path) {
@@ -175,10 +206,8 @@ struct Module {
     std::vector<Symbol> symbols;
     bool symbols_loaded = false;
 
-    Module(const std::string& path, uintptr_t base, size_t size,
-           std::vector<Symbol> symbols = {}, bool loaded = false)
-        : path(path), base(base), size(size),
-          symbols(std::move(symbols)), symbols_loaded(loaded) {}
+    Module(const std::string& path, uintptr_t base, size_t size, std::vector<Symbol> symbols = {}, bool loaded = false)
+        : path(path), base(base), size(size), symbols(std::move(symbols)), symbols_loaded(loaded) {}
 
     void ensure_symbols_loaded() {
         if (! symbols_loaded) {
@@ -212,35 +241,37 @@ class ModuleManager {
         modules_.clear();
         initialized_ = true;
 
-        const char* exe = "/proc/self/exe";
-        bool is_pie = is_pie_binary(exe);
+        dl_iterate_phdr(
+            [](struct dl_phdr_info* info, size_t, void* data) {
+                auto& mods = *reinterpret_cast<std::vector<Module>*>(data);
 
-        if (is_pie) {
-            // PIE 程序，使用 dl_iterate_phdr() 加载全部模块
-            dl_iterate_phdr(
-                [](struct dl_phdr_info* info, size_t, void* data) {
-                    auto& mods = *reinterpret_cast<std::vector<Module>*>(data);
-                    std::string path = (info->dlpi_name && *info->dlpi_name) ? info->dlpi_name : "/proc/self/exe";
-                    uintptr_t min_addr = static_cast<uintptr_t>(-1), max_addr = 0;
-                    for (int i = 0; i < info->dlpi_phnum; ++i) {
-                        if (info->dlpi_phdr[i].p_type == PT_LOAD) {
-                            uintptr_t seg_start = info->dlpi_addr + info->dlpi_phdr[i].p_vaddr;
-                            uintptr_t seg_end = seg_start + info->dlpi_phdr[i].p_memsz;
-                            if (seg_start < min_addr) min_addr = seg_start;
-                            if (seg_end > max_addr) max_addr = seg_end;
-                        }
+                // 获取模块路径
+                std::string path = (info->dlpi_name && *info->dlpi_name) ? info->dlpi_name : "/proc/self/exe";
+
+                uintptr_t min_addr = static_cast<uintptr_t>(-1), max_addr = 0;
+                for (int i = 0; i < info->dlpi_phnum; ++i) {
+                    if (info->dlpi_phdr[i].p_type == PT_LOAD) {
+                        uintptr_t seg_start = info->dlpi_addr + info->dlpi_phdr[i].p_vaddr;
+                        uintptr_t seg_end = seg_start + info->dlpi_phdr[i].p_memsz;
+                        if (seg_start < min_addr) min_addr = seg_start;
+                        if (seg_end > max_addr) max_addr = seg_end;
                     }
-                    size_t module_size = max_addr - min_addr;
-                    mods.push_back(Module{path, info->dlpi_addr, module_size, {}, false});
-                    return 0;
-                },
-                &modules_);
-        } else {
-            // no-pie：手动构造 main 模块
-            uintptr_t base = 0x400000;
-            size_t size = estimate_exe_size(exe);
-            modules_.push_back(Module{exe, base, size, {}, false});
-        }
+                }
+
+                uintptr_t base = info->dlpi_addr;
+                // 修正静态链接主程序 dlpi_addr == 0 的情况
+                if ((path == "/proc/self/exe" || path.empty()) && base == 0) {
+                    base = get_exe_base(); // 静态程序地址
+                }
+
+                if (min_addr < max_addr) {
+                    size_t size = max_addr - min_addr;
+                    mods.emplace_back(path, base, size);
+                }
+
+                return 0;
+            },
+            &modules_);
     }
 
     void clear() {
@@ -316,4 +347,4 @@ class Stacktrace {
     size_t size_ = 0;
 };
 
-} // namespace internal
+} // namespace stacktrace
