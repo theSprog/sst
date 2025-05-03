@@ -230,7 +230,7 @@ class ModuleManager {
         return m;
     }
 
-    const std::vector<Module>& all_modules() {
+    std::vector<Module>& all_modules() {
         if (! initialized_) {
             load_modules();
         }
@@ -299,13 +299,13 @@ class Stacktrace {
         return st;
     }
 
-    static ResolvedFrame resolve_with_modules(void* address, const std::vector<Module>& modules) {
+    static ResolvedFrame resolve_with_modules(void* address, std::vector<Module>& modules) {
         uintptr_t addr = reinterpret_cast<uintptr_t>(address);
         ResolvedFrame f;
         f.abs_addr = addr;
-        for (const auto& m : modules) {
+        for (auto& m : modules) {
             if (m.contains(addr)) {
-                const_cast<Module&>(m).ensure_symbols_loaded();
+                m.ensure_symbols_loaded();
                 auto* sym = find_symbol(addr, m.symbols);
                 if (sym) {
                     f.has_symbol = true;
@@ -326,7 +326,7 @@ class Stacktrace {
     }
 
     std::vector<ResolvedFrame> get_frames() const {
-        const auto& mods = ModuleManager::instance().all_modules();
+        auto& mods = ModuleManager::instance().all_modules();
         std::vector<ResolvedFrame> out;
         for (size_t i = 0; i < size_; ++i) {
             auto f = resolve_with_modules(frames_[i], mods);
