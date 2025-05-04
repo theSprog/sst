@@ -1,5 +1,5 @@
 // compile with: none
-#include "../include/stacktrace.hpp"
+#include "../include/sst.hpp"
 
 void C() {
     auto bt = stacktrace::Stacktrace::capture();

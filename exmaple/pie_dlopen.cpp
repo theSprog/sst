@@ -1,6 +1,6 @@
 // compile with: none
 
-#include "../include/stacktrace.hpp"
+#include "../include/sst.hpp"
 #include <cstdio>
 #include <cstdio>
 #include <iostream>

@@ -1,6 +1,6 @@
 // compile with: -static
 
-#include "../include/stacktrace.hpp"
+#include "../include/sst.hpp"
 #include <cstdio>
 
 void C() {

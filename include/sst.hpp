@@ -1,4 +1,4 @@
-// stacktrace.hpp - header-only stack backtrace tool
+// sst.hpp - header-only stack backtrace tool
 // Requirements:
 // - Only uses symbol table (no DWARF)
 // - Handles PIE vs non-PIE automatically

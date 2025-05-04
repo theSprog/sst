@@ -1,1 +1,6 @@
 exmaple/build
+src/build
+test/libsst.a
+test/libsst.so
+test/test_dyn
+test/test_static
