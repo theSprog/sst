@@ -15,7 +15,6 @@
 ## 📁 Project Structure
 
 ```
-
 .
 ├── include/
 │   └── sst.hpp          # ✅ Core header-only file for direct C++ use
@@ -23,9 +22,9 @@
 │   ├── sst.cpp          # 🔁 C API implementation
 │   └── sst.h            # 🔁 C API header (useful for Python FFI or other bindings)
 ├── exmaple/
-│   └── \*.cpp            # 📦 Example programs under various build configurations (PIE, no-PIE, static, shared, dlopen)
+│   └── *.cpp            # 📦 Example programs under various build configurations (PIE, no-PIE, static, shared, dlopen)
 ├── test/
-│   ├── test\_capi.c      # 🧪 Test program demonstrating the C API
+│   ├── test_capi.c      # 🧪 Test program demonstrating the C API
 └── README.md            # 📖 Project documentation
 
 ````
