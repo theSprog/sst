@@ -40,6 +40,6 @@ $(OUT_DYN): $(SRC) $(LIB_DYN)
 	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS_D)
 
 clean:
-	rm -f $(OUT_STATIC) $(OUT_DYN)
+	rm -f $(LIB_A_DST) $(LIB_SO_DST) $(OUT_STATIC) $(OUT_DYN)
 
 .PHONY: all clean
