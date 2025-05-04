@@ -1,32 +1,32 @@
-English version is [here](./README_en.md)
+中文版文档在[这里](./README_zh.md)
 
-`sst((simple stack trace))` 是一个轻量级、零依赖、**header-only** 的 C++ 栈回溯库，专为低侵入、高兼容性而设计。它支持：
+`sst(simple stack trace)` is a lightweight, zero-dependency, **header-only** C++ stacktrace library designed for minimal intrusion and high compatibility. It supports:
 
-- ✅ **不依赖 DWARF**：仅使用符号表（`.symtab` / `.dynsym`），不依赖 dwarf 调试信息
-- ✅ **pie / no-pie**：自动识别主程序是否 pie 类型，准确处理地址重定位
-- ✅ **静态 / 动态链接**：在 `-static`、`-no-pie`、`-pie`、`-lxxx` 等构建下均可正常工作
-- ✅ **动态库解析**：支持 `dlopen()` 动态加载模块的符号解析
-- ✅ **C API 导出**：可通过 `libsst.so` / `libsst.a` 提供给纯 C 项目调用
+- ✅ **No DWARF Required**: Uses only the symbol table (`.symtab` / `.dynsym`), no reliance on DWARF debug info
+- ✅ **PIE / No-PIE Support**: Automatically detects whether the main binary is PIE and handles address relocation properly
+- ✅ **Static / Dynamic Linking**: Works with `-static`, `-no-pie`, `-pie`, and `-lxxx` builds out of the box
+- ✅ **Dynamic Library Resolution**: Can resolve symbols from modules loaded via `dlopen()`
+- ✅ **C API Export**: Provides a C-compatible API via `libsst.so` / `libsst.a` for integration with C or other languages
 
 ---
 
 
 
-## 📁 项目结构
+## 📁 Project Structure
 
 ```
 
 .
 ├── include/
-│   └── sst.hpp          # ✅ 核心头文件，header-only，可直接引入使用
+│   └── sst.hpp          # ✅ Core header-only file for direct C++ use
 ├── src/
-│   ├── sst.cpp          # 🔁 C API 实现
-│   └── sst.h            # 🔁 C API 头文件（便于其他语言如 Python FFI）
+│   ├── sst.cpp          # 🔁 C API implementation
+│   └── sst.h            # 🔁 C API header (useful for Python FFI or other bindings)
 ├── exmaple/
-│   └── \*.cpp            # 📦 多种构建配置下的例子（pie / no-pie / static / shared / dlopen 等）
+│   └── \*.cpp            # 📦 Example programs under various build configurations (PIE, no-PIE, static, shared, dlopen)
 ├── test/
-│   ├── test\_capi.c      # 🧪 使用 C API 的测试程序
-└── README.md            # 📖 当前文档
+│   ├── test\_capi.c      # 🧪 Test program demonstrating the C API
+└── README.md            # 📖 Project documentation
 
 ````
 
@@ -34,16 +34,16 @@ English version is [here](./README_en.md)
 
 
 
-## 🔧 快速开始（C++）
+## 🔧 Getting Started (C++)
 
-你只需一个头文件：
+All you need is one header:
 
 ```cpp
 #include "sst.hpp"
 
 int main() {
     stacktrace::Stacktrace st = stacktrace::Stacktrace::capture();
-    st.print();  // 输出当前栈帧
+    st.print();  // Print the current call stack
 }
 ````
 
@@ -51,9 +51,9 @@ int main() {
 
 
 
-## 🌐 C API 用法
+## 🌐 Using the C API
 
-你可以构建 `libsst.a` 或 `libsst.so` 来为 C 项目或其他语言提供支持：
+You can build `libsst.a` or `libsst.so` and use it from C or other languages:
 
 ```c
 #include "sst.h"
@@ -66,38 +66,37 @@ int main() {
 }
 ```
 
-构建参考：
+Build instructions:
 
 ```bash
-cd src && make       # 构建静态和动态库
+cd src && make       # Build the static and shared libraries
 
-# 如果想要测试
-cd test && make      # 编译 C 测试代码
+# if you want to test
+cd test && make      # Compile the test using the C API
 ```
 
 ---
 
 
 
-## 💡 示例运行
+## 💡 Example Usage
 
-你可以参考 `exmaple/` 目录中的样例测试不同构建配置下的行为：
+Check out the `exmaple/` directory for sample programs covering different scenarios:
 
-* `pie.cpp`, `nopie.cpp`, `static.cpp`：测试主程序构建方式
-* `pie_dlopen.cpp`, `nopie_dlopen.cpp`：测试 `dlopen()` 场景
-* `*_shared*.cpp`：测试链接动态库后能否成功回溯库中函数
+* `pie.cpp`, `nopie.cpp`, `static.cpp`: Test various main binary configurations
+* `pie_dlopen.cpp`, `nopie_dlopen.cpp`: Test symbol resolution for `dlopen()`-loaded modules
+* `*_shared*.cpp`: Test whether symbols from linked shared libraries are correctly resolved
 
 ---
 
 
 
-## 🛠️ 技术原理
+## 🛠️ Technical Details
 
-* 使用 `dl_iterate_phdr` 遍历所有加载模块（包括主程序和动态库）
-* 基于 ELF 文件格式解析 `.symtab` 和 `.dynsym`
-* PIE 程序使用 `dlpi_addr + st_value`，非 PIE 直接使用 `st_value`
-* 对于 no-pie 和 static 构建，基地址通过 `/proc/self/maps` 解析出
+* Uses `dl_iterate_phdr()` to enumerate all loaded modules (including the main binary and shared libraries)
+* Parses `.symtab` and `.dynsym` from ELF files directly
+* Resolves symbol addresses as `dlpi_addr + st_value` for PIE binaries, or just `st_value` for no-PIE
+* For static or no-PIE binaries (where `dlpi_addr == 0`), uses `/proc/self/maps` to determine the true base address
 
-
-## 📬 联系作者
-欢迎提 Issue 或 PR 进行反馈与贡献（如果代码有 bug，请务必告诉我😘）！
+## 📬 Contact me
+Feel free to submit an Issue or PR for contribution(If there are bugs, PLEASE TELL ME!😘)
