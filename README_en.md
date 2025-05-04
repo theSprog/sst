@@ -57,7 +57,7 @@ You can build `libsst.a` or `libsst.so` and use it from C or other languages:
 #include "sst.h"
 
 int main() {
-    sst_trace_t trace;
+    sst_backtrace trace;
     sst_capture(&trace);
     sst_print(&trace);
     return 0;
