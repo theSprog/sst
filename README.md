@@ -61,7 +61,8 @@ You can build `libsst.a` or `libsst.so` and use it from C or other languages:
 int main() {
     sst_backtrace trace;
     sst_capture(&trace);
-    sst_print(&trace);
+    sst_print_stdout(&bt);
+    sst_print(&bt, stderr); // output to customizable file
     return 0;
 }
 ```

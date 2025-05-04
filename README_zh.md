@@ -59,7 +59,8 @@ int main() {
 int main() {
     sst_backtrace trace;
     sst_capture(&trace);
-    sst_print(&trace);
+    sst_print_stdout(&bt);
+    sst_print(&bt, stderr); // 输出到自定义文件
     return 0;
 }
 ```
