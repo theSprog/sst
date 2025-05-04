@@ -2,6 +2,7 @@
 // Requirements:
 // - Only uses symbol table (no DWARF)
 // - Handles PIE vs non-PIE automatically
+// - Handles static vs dynamic linking automatically
 // - Resolves symbols in all loaded modules (including dlopen'd ones)
 
 #pragma once
@@ -50,7 +51,7 @@ struct ResolvedFrame {
             oss << "(no symbol)";
         }
         oss << " in " << module;
-        oss << " (" << reinterpret_cast<void*>(abs_addr) << ")";
+        oss << " (" << reinterpret_cast<void*>(abs_addr) << ")\n";
         return oss.str();
     }
 };
@@ -169,7 +170,8 @@ inline std::vector<Symbol> load_symbols(const char* path, uintptr_t base) {
     };
 
     if (! try_section(SHT_SYMTAB)) {
-        try_section(SHT_DYNSYM); // fallback only if symtab not found
+        // 如果没有找到 symtab 则退化到寻找 dynsym (例如对于 libc.so.6 就是只有 dynsym)
+        try_section(SHT_DYNSYM);
     }
 
     if (symtab && strtab) {
@@ -177,6 +179,8 @@ inline std::vector<Symbol> load_symbols(const char* path, uintptr_t base) {
         for (size_t i = 0; i < nsyms; ++i) {
             const auto& s = symtab[i];
             if (ELF64_ST_TYPE(s.st_info) == STT_FUNC && s.st_value > 0) {
+                // 如果是非 pie, 则符号地址就是绝对地址
+                // 如果是 ET_DYN, st_value 表示 相对地址, 必须加 base 才能得出真实的地址
                 uintptr_t symbol_addr = is_pie ? (s.st_value + base) : s.st_value;
                 syms.push_back({symbol_addr, strtab + s.st_name});
             }
@@ -245,12 +249,21 @@ class ModuleManager {
             [](struct dl_phdr_info* info, size_t, void* data) {
                 auto& mods = *reinterpret_cast<std::vector<Module>*>(data);
 
-                // 获取模块路径
+                // 获取模块路径, "" 代表主程序自身
                 std::string path = (info->dlpi_name && *info->dlpi_name) ? info->dlpi_name : "/proc/self/exe";
 
                 uintptr_t min_addr = static_cast<uintptr_t>(-1), max_addr = 0;
                 for (int i = 0; i < info->dlpi_phnum; ++i) {
+                    /*
+                        有些函数存在于非可执行段中（少数编译器行为），
+                        加 (phdr[i].p_flags & PF_X) != 0) 过滤条件反而漏了, 
+                        所以此处不能用 p_flags 过滤
+                    */
                     if (info->dlpi_phdr[i].p_type == PT_LOAD) {
+                        /*
+                            no-pie 时 info->dlpi_addr == 0, p_vaddr (+0) 就是段映射的实际虚拟地址
+                            pie 时 info->dlpi_addr != 0, p_vaddr + dlpi_addr 才是段映射的实际虚拟地址
+                        */
                         uintptr_t seg_start = info->dlpi_addr + info->dlpi_phdr[i].p_vaddr;
                         uintptr_t seg_end = seg_start + info->dlpi_phdr[i].p_memsz;
                         if (seg_start < min_addr) min_addr = seg_start;
@@ -259,12 +272,16 @@ class ModuleManager {
                 }
 
                 uintptr_t base = info->dlpi_addr;
-                // 修正静态链接主程序 dlpi_addr == 0 的情况
+
+                /*
+                修正 -static/-no-pie 主程序 dlpi_addr == 0 的情况, 
+                不能直接将 dlpi_addr 用于 base, 因为后续的 contains 会误判
+                */
                 if ((path == "/proc/self/exe" || path.empty()) && base == 0) {
-                    base = get_exe_base(); // 静态程序地址
+                    base = get_exe_base(); // -static/-no-pie 程序加载基地址
                 }
 
-                if (min_addr < max_addr) {
+                if (min_addr < max_addr) {  // 若 min_addr > max_addr 则说明本 module 不存在可 load 的段
                     size_t size = max_addr - min_addr;
                     mods.emplace_back(path, base, size);
                 }
@@ -289,16 +306,7 @@ class ModuleManager {
 class Stacktrace {
     static constexpr size_t kMaxFrames = 32;
 
-  public:
-    static Stacktrace capture(size_t max_frames = kMaxFrames) {
-        Stacktrace st;
-        if (max_frames > st.frames_.size()) {
-            max_frames = st.frames_.size(); // 确保不越界
-        }
-        st.size_ = ::backtrace(st.frames_.data(), static_cast<int>(max_frames));
-        return st;
-    }
-
+private:
     static ResolvedFrame resolve_with_modules(void* address, std::vector<Module>& modules) {
         uintptr_t addr = reinterpret_cast<uintptr_t>(address);
         ResolvedFrame f;
@@ -321,6 +329,17 @@ class Stacktrace {
         return f;
     }
 
+  public:
+    static Stacktrace capture(size_t max_frames = kMaxFrames) {
+        Stacktrace st;
+        if (max_frames > st.frames_.size()) {
+            max_frames = st.frames_.size(); // 确保不越界
+        }
+        st.size_ = ::backtrace(st.frames_.data(), static_cast<int>(max_frames));
+        return st;
+    }
+
+
     static ResolvedFrame resolve(void* address) {
         return resolve_with_modules(address, ModuleManager::instance().all_modules());
     }
@@ -338,7 +357,7 @@ class Stacktrace {
 
     void print(std::ostream& os = std::cout) const {
         for (const auto& f : get_frames()) {
-            os << f.to_string() << "\n";
+            os << f.to_string();
         }
     }
 
