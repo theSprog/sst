@@ -21,20 +21,28 @@ extern "C" {
 /// 最大模块路径长度（包含 '\0'），超长将以 "..." 截断
 #define SST_MODULE_NAME_LEN 256
 
-/// 表示一个解析后的栈帧
-typedef struct {
-    size_t index;                         ///< 帧编号
-    uintptr_t abs_addr;                   ///< 绝对地址
-    uintptr_t offset;                     ///< 符号内偏移
-    char function[SST_SYMBOL_NAME_LEN];   ///< 函数名，可能被截断为 "...”
-    char module[SST_MODULE_NAME_LEN];     ///< 模块路径，可能被截断
-    int has_symbol;                       ///< 是否成功解析出符号
+/// 表示一个完全解析后的栈帧
+typedef struct sst_frame {
+    size_t index;                       ///< 帧编号
+    uintptr_t abs_addr;                 ///< 绝对地址
+    uintptr_t offset;                   ///< 符号内偏移
+    char function[SST_SYMBOL_NAME_LEN]; ///< 函数名，可能被截断为 "...”
+    char module[SST_MODULE_NAME_LEN];   ///< 模块路径，可能被截断
+    int has_symbol;                     ///< 是否成功解析出符号
 } sst_frame;
 
+/// 栈回溯的原始帧结构：仅包含地址信息和所属模块
+typedef struct sst_raw_frame {
+    uintptr_t abs_addr;       ///< 绝对地址（虚拟地址）
+    uintptr_t offset;         ///< 相对于模块的偏移
+    int has_symbol;           ///< 是否成功解析符号
+    char* module;           ///< 模块名，C 字符串
+} sst_raw_frame;
+
 /// 栈回溯结构体，包含若干帧
-typedef struct {
-    sst_frame frames[SST_MAX_FRAMES];     ///< 栈帧数组
-    size_t size;                          ///< 有效帧数
+typedef struct sst_backtrace {
+    sst_frame frames[SST_MAX_FRAMES]; ///< 栈帧数组
+    size_t size;                      ///< 有效帧数
 } sst_backtrace;
 
 /**
@@ -68,6 +76,33 @@ void sst_print_stderr(const sst_backtrace* trace);
  * @param trace 栈结构体
  */
 void sst_print_stdout(const sst_backtrace* trace);
+
+/**
+ * @brief 将原始地址解析为 sst_raw_frame 结构体（例如用户态或动态加载模块）
+ * @param addr 绝对地址（虚拟地址）
+ * @param out [out] 结构体，内部自动填充 module/offset 等
+ * @note 若 module 为变长字段，请在 out 指向的内存区域预留足够空间
+ */
+void sst_resolve_to_raw(void* addr, sst_raw_frame* out);
+
+/**
+ * @brief 批量释放一组 sst_raw_frame 中动态分配的模块名
+ * 
+ * 注意：仅释放每个 frame 的 module 字符串，不释放数组本身。
+ * 若数组由 malloc 分配，需由调用者自行释放。
+ *
+ * @param frames sst_raw_frame 数组指针（不可为 NULL）
+ * @param count 数组中的元素个数
+ */
+void sst_free_raw_frames(sst_raw_frame* frames, size_t count);
+
+/**
+ * @brief 将一批地址批量转换为原始帧信息
+ * @param addrs 地址数组
+ * @param count 地址个数
+ * @param out [out] 输出数组，应至少具有 count 个元素空间
+ */
+void sst_resolve_raw_batch(void** addrs, size_t count, sst_raw_frame* outs);
 
 #ifdef __cplusplus
 }

@@ -86,3 +86,39 @@ void sst_print_stderr(const sst_backtrace* trace) {
 void sst_print_stdout(const sst_backtrace* trace) {
     sst_print(trace, stdout);
 }
+
+void sst_resolve_to_raw(void* addr, sst_raw_frame* out) {
+    if (! addr || ! out) return;
+
+    RawFrame rf = Stacktrace::resolve_to_raw(addr);
+
+    out->abs_addr = reinterpret_cast<uintptr_t>(rf.abs_addr);
+    out->offset = rf.offset;
+    out->has_symbol = rf.has_symbol;
+
+    if (! rf.module.empty()) {
+        // 使用 strdup 复制模块名
+        out->module = strdup(rf.module.c_str());
+    } else {
+        out->module = nullptr;
+    }
+}
+
+void sst_free_raw_frames(sst_raw_frame* frames, size_t count) {
+    if (! frames) return;
+
+    for (size_t i = 0; i < count; ++i) {
+        if (frames[i].module) {
+            free(frames[i].module);
+            frames[i].module = nullptr;
+        }
+    }
+}
+
+void sst_resolve_raw_batch(void** addrs, size_t count, sst_raw_frame* outs) {
+    if (! addrs || ! outs) return;
+
+    for (size_t i = 0; i < count; ++i) {
+        sst_resolve_to_raw(addrs[i], &outs[i]);
+    }
+}

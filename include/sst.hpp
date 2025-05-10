@@ -32,6 +32,15 @@ struct Symbol {
     std::string name;
 };
 
+struct RawFrame {
+    uintptr_t abs_addr = 0;
+    uintptr_t offset = 0;
+    std::string module;
+    bool has_symbol = false;
+
+    RawFrame() : abs_addr(0), offset(0), module(), has_symbol(false) {}
+};
+
 struct ResolvedFrame {
     size_t index = 0;
     uintptr_t abs_addr = 0;
@@ -84,9 +93,9 @@ inline uintptr_t get_exe_base() {
 
         // eg. 00400000-00401000 r--p 00000000 08:10 1487 /path/to/test
         if (! (iss >> addr_range >> perms >> offset >> dev >> inode)) continue;
-        std::getline(iss, path); // 路径可能带空格, 因此单独获取
+        std::getline(iss, path);                    // 路径可能带空格, 因此单独获取
         path.erase(0, path.find_first_not_of(' ')); // trim leading spaces
-        if (path != exe_path) continue; // 只找主程序
+        if (path != exe_path) continue;             // 只找主程序
 
         size_t dash = addr_range.find('-');
         if (dash == std::string::npos) continue;
@@ -281,7 +290,7 @@ class ModuleManager {
                     base = get_exe_base(); // -static/-no-pie 程序加载基地址
                 }
 
-                if (min_addr < max_addr) {  // 若 min_addr > max_addr 则说明本 module 不存在可 load 的段
+                if (min_addr < max_addr) { // 若 min_addr > max_addr 则说明本 module 不存在可 load 的段
                     size_t size = max_addr - min_addr;
                     mods.emplace_back(path, base, size);
                 }
@@ -306,7 +315,7 @@ class ModuleManager {
 class Stacktrace {
     static constexpr size_t kMaxFrames = 32;
 
-private:
+  private:
     static ResolvedFrame resolve_with_modules(void* address, std::vector<Module>& modules) {
         uintptr_t addr = reinterpret_cast<uintptr_t>(address);
         ResolvedFrame f;
@@ -329,6 +338,25 @@ private:
         return f;
     }
 
+    static RawFrame resolve_to_raw_with_modules(void* address, std::vector<Module>& modules) {
+        uintptr_t addr = reinterpret_cast<uintptr_t>(address);
+        RawFrame f;
+        f.abs_addr = addr;
+        for (auto& m : modules) {
+            if (m.contains(addr)) {
+                f.has_symbol = true;
+                if(is_pie_binary(m.path.c_str())) {
+                    f.offset = addr - m.base;
+                }else {
+                    f.offset = addr;
+                }
+                f.module = m.path;
+                break;
+            }
+        }
+        return f;
+    }
+
   public:
     static Stacktrace capture(size_t max_frames = kMaxFrames) {
         Stacktrace st;
@@ -339,9 +367,24 @@ private:
         return st;
     }
 
-
     static ResolvedFrame resolve(void* address) {
-        return resolve_with_modules(address, ModuleManager::instance().all_modules());
+        auto& mods = ModuleManager::instance().all_modules();
+        return resolve_with_modules(address, mods);
+    }
+
+    static RawFrame resolve_to_raw(void* address) {
+        auto& mods = ModuleManager::instance().all_modules();
+        return resolve_to_raw_with_modules(address, mods);
+    }
+
+    std::vector<RawFrame> get_raw_frames() const {
+        auto& mods = ModuleManager::instance().all_modules();
+        std::vector<RawFrame> out;
+        for (size_t i = 0; i < size_; ++i) {
+            auto rf = resolve_to_raw_with_modules(frames_[i], mods);
+            out.push_back(std::move(rf));
+        }
+        return out;
     }
 
     std::vector<ResolvedFrame> get_frames() const {
