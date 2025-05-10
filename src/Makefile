@@ -1,5 +1,5 @@
 CXX := g++
-CXXFLAGS := -std=c++11 -Wall -Wextra -Weffc++ -O2
+CXXFLAGS := -std=c++11 -Wall -Wextra -Weffc++ -O2 -g
 CXXFLAGS += -Werror=uninitialized \
     -Werror=return-type \
     -Wconversion \

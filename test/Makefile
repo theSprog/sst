@@ -19,7 +19,7 @@ LIB_SO_DST  := libsst.so
 
 # === 编译配置 ===
 CC         := gcc
-CFLAGS     := -I$(SRC_DIR) -Wall -Wextra
+CFLAGS     := -I$(SRC_DIR) -Wall -Wextra -g
 LDFLAGS_D  := -L$(LIBDIR) -lsst
 LDFLAGS_S  := -static -L$(LIBDIR) -lsst -lstdc++ -lm -lpthread
 
