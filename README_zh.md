@@ -44,7 +44,37 @@ int main() {
 }
 ````
 
----
+
+
+### Raw Frame 结构体
+
+> 💡 RawFrame 是一种更低层级的数据结构，这类信息特别适用于配合 `addr2line` 等命令行工具进行二次解析，例如
+>
+> `addr2line -e /lib/libc.so.6 0x1234`
+
+如果你希望配合 `addr2line` 或构建自定义回溯展示工具，可以进一步调用 `resolve_to_raw()` 或 `get_raw_frames()` 获取绝对地址、偏移量和模块信息
+
+```c++
+#include "sst.hpp"
+
+int main() {
+    using stacktrace::Stacktrace;
+    using stacktrace::RawFrame;
+
+    Stacktrace st = Stacktrace::capture();
+    std::vector<RawFrame> raw = st.get_raw_frames();
+
+    for (const auto& f : raw) {
+        printf("abs: 0x%lx, offset: 0x%lx, module: %s\n",
+               (unsigned long)f.abs_addr,
+               (unsigned long)f.offset,
+               f.module.c_str());
+    }
+
+    // 也可单独解析任意地址
+    RawFrame one = Stacktrace::resolve_to_raw((void*)main);
+}
+```
 
 
 
@@ -56,21 +86,69 @@ int main() {
 #include "sst.h"
 
 int main() {
-    sst_backtrace trace;
-    sst_capture(&trace);
+    sst_backtrace bt;
+    sst_capture(&bt);
     sst_print_stdout(&bt);
     sst_print(&bt, stderr); // 输出到自定义文件
+
+    // 批量获取 raw 栈帧（可配合 addr2line 使用）
+    void* pcs[SST_MAX_FRAMES];
+    sst_raw_frame raw[SST_MAX_FRAMES];
+    for (size_t i = 0; i < bt.size; ++i) {
+        pcs[i] = (void*)bt.frames[i].abs_addr;
+    }
+    sst_resolve_raw_batch(pcs, bt.size, raw);
+
+    for (size_t i = 0; i < bt.size; ++i) {
+        printf("addr: 0x%lx, offset: 0x%lx, module: %s\n",
+               (unsigned long)raw[i].abs_addr,
+               (unsigned long)raw[i].offset,
+               raw[i].module ?: "<unknown>");
+    }
+
+    sst_free_raw_frames(raw, bt.size); // 释放 module 字符串
     return 0;
 }
 ```
 
-构建参考：
+> 💡为了准确传递 **模块名路径**，`module` 必须是 `char*` 字符串，而不能是定长数组。否则可能会被截断，影响调试效果。所以所有 `sst_raw_frame` 中的 `module` 字符串都由库内部 `strdup()` 分配，使用完后需手动释放，避免内存泄漏。
+
+---
+
+
+
+## C库构建参考
 
 ```bash
 cd src && make       # 构建静态和动态库
 
 # 如果想要测试
 cd test && make      # 编译 C 测试代码
+```
+
+---
+
+
+
+## 🧼 资源管理（C）
+
+所有通过 `sst_resolve_to_raw()` 或 `sst_resolve_raw_batch()` 得到的 `sst_raw_frame.module` 都必须 **手动释放**：
+
+```c
+sst_raw_frame frame;
+sst_resolve_to_raw(ptr, &frame);
+// 使用 frame.module ...
+sst_free_raw_frames(&frame, 1);
+```
+
+对于批量情况，也有 `sst_free_raw_frames` 可用， 但它只会释放每一个 `sst_raw_frame` 的 `module` 字段不会释放数组本体， 是否释放数组本体由用户决定：
+
+```c
+sst_raw_frame* arr = malloc(sizeof(sst_raw_frame) * count);
+sst_resolve_raw_batch(addrs, count, arr);
+// 使用 arr[i].module ...
+sst_free_raw_frames(arr, count);
+free(arr); // 可选：释放数组本体
 ```
 
 ---

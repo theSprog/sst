@@ -30,49 +30,120 @@
 ````
 
 ---
+## 🔧 Quick Start (C++)
 
-
-
-## 🔧 Getting Started (C++)
-
-All you need is one header:
+You only need a single header:
 
 ```cpp
 #include "sst.hpp"
 
 int main() {
     stacktrace::Stacktrace st = stacktrace::Stacktrace::capture();
-    st.print();  // Print the current call stack
+    st.print();  // Print current stack frames
 }
-````
+```
 
 ---
 
+### Raw Frame Structure
 
+> 💡 `RawFrame` is a lower-level structure designed to work well with tools like `addr2line`, which allow symbolic address resolution via commands like:
+>
+> `addr2line -e /lib/libc.so.6 0x1234`
 
-## 🌐 Using the C API
+If you want to integrate with `addr2line`, or build custom backtrace analysis tools, you can use `resolve_to_raw()` or `get_raw_frames()` to retrieve absolute addresses, module offsets, and file paths:
 
-You can build `libsst.a` or `libsst.so` and use it from C or other languages:
+```cpp
+#include "sst.hpp"
+
+int main() {
+    using stacktrace::Stacktrace;
+    using stacktrace::RawFrame;
+
+    Stacktrace st = Stacktrace::capture();
+    std::vector<RawFrame> raw = st.get_raw_frames();
+
+    for (const auto& f : raw) {
+        printf("abs: 0x%lx, offset: 0x%lx, module: %s\n",
+               (unsigned long)f.abs_addr,
+               (unsigned long)f.offset,
+               f.module_name.c_str());
+    }
+
+    // You can also resolve a single address
+    RawFrame one = Stacktrace::resolve_to_raw((void*)main);
+}
+```
+
+---
+
+## 🌐 C API Usage
+
+You can build `libsst.a` or `libsst.so` to use the library from C projects or foreign language bindings:
 
 ```c
 #include "sst.h"
 
 int main() {
-    sst_backtrace trace;
-    sst_capture(&trace);
+    sst_backtrace bt;
+    sst_capture(&bt);
     sst_print_stdout(&bt);
-    sst_print(&bt, stderr); // output to customizable file
+    sst_print(&bt, stderr); // Print to a custom file stream
+
+    // Extract raw frame info (can be used with addr2line)
+    void* pcs[SST_MAX_FRAMES];
+    sst_raw_frame raw[SST_MAX_FRAMES];
+    for (size_t i = 0; i < bt.size; ++i) {
+        pcs[i] = (void*)bt.frames[i].abs_addr;
+    }
+    sst_resolve_raw_batch(pcs, bt.size, raw);
+
+    for (size_t i = 0; i < bt.size; ++i) {
+        printf("addr: 0x%lx, offset: 0x%lx, module: %s\n",
+               (unsigned long)raw[i].abs_addr,
+               (unsigned long)raw[i].offset,
+               raw[i].module ?: "<unknown>");
+    }
+
+    sst_free_raw_frames(raw, bt.size); // Free allocated module strings
     return 0;
 }
 ```
 
-Build instructions:
+> 💡 To ensure the full module path is preserved for tools like `addr2line`, the `module` field must be a dynamically allocated `char*`, not a fixed-size array. Fixed-size buffers may truncate long paths and break tooling. All `sst_raw_frame.module` values are allocated via `strdup()` internally, and must be manually freed to avoid memory leaks.
+
+---
+
+## 🛠️ Build Instructions
 
 ```bash
-cd src && make       # Build the static and shared libraries
+cd src && make       # Build both static and shared libraries
 
-# if you want to test
-cd test && make      # Compile the test using the C API
+# If you want to run tests
+cd test && make      # Build C test binaries
+```
+
+---
+
+## 🧼 Memory Management (C)
+
+All `sst_raw_frame.module` strings returned by `sst_resolve_to_raw()` or `sst_resolve_raw_batch()` must be manually freed:
+
+```c
+sst_raw_frame frame;
+sst_resolve_to_raw(ptr, &frame);
+// Use frame.module ...
+sst_free_raw_frames(&frame, 1);
+```
+
+For batch allocations, use `sst_free_raw_frames` to release each internal `char*`. This function does **not** free the array itself — you are responsible for that:
+
+```c
+sst_raw_frame* arr = malloc(sizeof(sst_raw_frame) * count);
+sst_resolve_raw_batch(addrs, count, arr);
+// Use arr[i].module ...
+sst_free_raw_frames(arr, count);
+free(arr); // Optional: free the array body itself
 ```
 
 ---
