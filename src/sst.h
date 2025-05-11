@@ -59,6 +59,12 @@ void sst_capture(sst_backtrace* out);
 void sst_resolve(void* addr, sst_frame* out);
 
 /**
+ * @brief 清除所有已加载的模块的缓存
+ * @note 一般而言不需要调用此函数, 只有在 dlopen 载入/卸载新模块后旧有缓存已失效才会调用此函数
+ */
+void sst_clear_modules_cache();
+
+/**
  * @brief 打印栈信息到指定文件流
  * @param trace 栈结构体（来自 sst_capture）
  * @param file 目标文件流，例如 stderr / stdout / fopen 的句柄

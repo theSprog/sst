@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cstring>
 
+// this .cpp would compile to .so/.a, so `using namespace` is ok
 using namespace stacktrace;
 
 /// 帮助函数：安全填充 sst_frame
@@ -53,6 +54,10 @@ void sst_resolve(void* addr, sst_frame* out) {
 
     auto frame = Stacktrace::resolve(addr);
     fill_frame_info(frame, out);
+}
+
+void sst_clear_modules_cache() {
+    Stacktrace::clear_modules_cache();
 }
 
 void sst_print(const sst_backtrace* trace, FILE* file) {

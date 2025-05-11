@@ -326,6 +326,7 @@ class ModuleManager {
             &modules_);
     }
 
+    // for after dlopen(), new modules has been install/uninstall so `modules_` cache is old
     void clear() {
         initialized_ = false;
         modules_.clear();
@@ -393,6 +394,10 @@ class Stacktrace {
         }
         st.size_ = ::backtrace(st.frames_.data(), static_cast<int>(max_frames));
         return st;
+    }
+
+    static void clear_modules_cache() {
+        ModuleManager::instance().clear();
     }
 
     static ResolvedFrame resolve(void* address) {
