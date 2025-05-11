@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cassert>
 #include <vector>
 #include <string>
 #include <sstream>
@@ -227,9 +228,16 @@ struct Module {
     size_t size;
     std::vector<Symbol> symbols;
     bool symbols_loaded = false;
+    bool is_main_prog = false;
 
-    Module(const std::string& path, uintptr_t base, size_t size, std::vector<Symbol> symbols = {}, bool loaded = false)
-        : path(path), base(base), size(size), symbols(std::move(symbols)), symbols_loaded(loaded) {}
+    Module(const std::string& path,
+           uintptr_t base,
+           size_t size,
+           bool main_prog = false,
+           std::vector<Symbol> symbols = {},
+           bool loaded = false)
+        : path(path), base(base), size(size), symbols(std::move(symbols)), symbols_loaded(loaded),
+          is_main_prog(main_prog) {}
 
     void ensure_symbols_loaded() {
         if (! symbols_loaded) {
@@ -268,7 +276,15 @@ class ModuleManager {
                 auto& mods = *reinterpret_cast<std::vector<Module>*>(data);
 
                 // 获取模块路径, "" 代表主程序自身
-                std::string path = (info->dlpi_name && *info->dlpi_name) ? info->dlpi_name : "/proc/self/exe";
+                std::string path;
+                bool is_main_prog;
+                if (info->dlpi_name && *info->dlpi_name) {
+                    path = info->dlpi_name;
+                    is_main_prog = false;
+                } else {
+                    path = get_real_exe_path();
+                    is_main_prog = true;
+                }
 
                 uintptr_t min_addr = static_cast<uintptr_t>(-1), max_addr = 0;
                 for (int i = 0; i < info->dlpi_phnum; ++i) {
@@ -295,13 +311,14 @@ class ModuleManager {
                 修正 -static/-no-pie 主程序 dlpi_addr == 0 的情况, 
                 不能直接将 dlpi_addr 用于 base, 因为后续的 contains 会误判
                 */
-                if ((path == "/proc/self/exe" || path.empty()) && base == 0) {
+                if (path.empty()) __builtin_unreachable();
+                if (is_main_prog && base == 0) {
                     base = get_exe_base(); // -static/-no-pie 程序加载基地址
                 }
 
                 if (min_addr < max_addr) { // 若 min_addr > max_addr 则说明本 module 不存在可 load 的段
                     size_t size = max_addr - min_addr;
-                    mods.emplace_back(path, base, size);
+                    mods.emplace_back(path, base, size, is_main_prog);
                 }
 
                 return 0;
@@ -360,10 +377,7 @@ class Stacktrace {
                     f.offset = addr;
                 }
                 f.module = m.path;
-                
-                if (f.module == "/proc/self/exe") {
-                    f.module = get_real_exe_path();
-                }
+
                 break;
             }
         }
