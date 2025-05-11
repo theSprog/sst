@@ -134,6 +134,15 @@ inline size_t estimate_exe_size(const char* path) {
     return end;
 }
 
+static std::string get_real_exe_path() {
+    std::ifstream ifs("/proc/self/cmdline", std::ios::in | std::ios::binary);
+    if (! ifs) return "/proc/self/exe"; // fallback
+
+    std::string path;
+    std::getline(ifs, path, '\0'); // 读取第一个 null-terminated 参数
+    return path.empty() ? "/proc/self/exe" : path;
+}
+
 inline std::string demangle(const char* name) {
     int status = 0;
     char* realname = abi::__cxa_demangle(name, nullptr, nullptr, &status);
@@ -345,15 +354,20 @@ class Stacktrace {
         for (auto& m : modules) {
             if (m.contains(addr)) {
                 f.has_symbol = true;
-                if(is_pie_binary(m.path.c_str())) {
+                if (is_pie_binary(m.path.c_str())) {
                     f.offset = addr - m.base;
-                }else {
+                } else {
                     f.offset = addr;
                 }
                 f.module = m.path;
+                
+                if (f.module == "/proc/self/exe") {
+                    f.module = get_real_exe_path();
+                }
                 break;
             }
         }
+
         return f;
     }
 
