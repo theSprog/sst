@@ -1,5 +1,5 @@
 CXX := g++
-CXXFLAGS := -std=c++11 -Wall -Wextra -Weffc++ -O0 -fno-exceptions -fno-inline
+CXXFLAGS := -std=c++11 -g -Wall -Wextra -Weffc++ -O0 -fno-exceptions -fno-inline
 CXXFLAGS += -Werror=uninitialized \
     -Werror=return-type \
     -Wconversion \
@@ -28,7 +28,8 @@ all: $(BUILD)/libfoo.a $(BUILD)/libfoo.so \
      $(BUILD)/nopie_shared \
      $(BUILD)/nopie_shared_static \
      $(BUILD)/nopie_dlopen \
-     $(BUILD)/nopie_dlopen_static
+     $(BUILD)/nopie_dlopen_static \
+	 $(BUILD)/target_pid 
 
 # 创建 build 目录
 $(BUILD):
@@ -74,6 +75,9 @@ $(BUILD)/nopie_dlopen: nopie_dlopen.cpp | $(BUILD)
 
 $(BUILD)/nopie_dlopen_static: nopie_dlopen_static.cpp | $(BUILD)
 	$(CXX) $(CXXFLAGS) -no-pie -static $< -ldl -o $@
+
+$(BUILD)/target_pid: target_pid.cpp | $(BUILD)
+	$(CXX) $(CXXFLAGS) $< -o $@
 
 clean:
 	rm -rf $(BUILD)
