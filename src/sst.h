@@ -8,6 +8,7 @@ extern "C" {
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <sched.h>
 
 /// API 版本号，便于未来兼容扩展
 #define SST_API_VERSION 1
@@ -33,10 +34,10 @@ typedef struct sst_frame {
 
 /// 栈回溯的原始帧结构：仅包含地址信息和所属模块
 typedef struct sst_raw_frame {
-    uintptr_t abs_addr;       ///< 绝对地址（虚拟地址）
-    uintptr_t offset;         ///< 相对于模块的偏移
-    int has_symbol;           ///< 是否成功解析符号
-    char* module;           ///< 模块名，C 字符串
+    uintptr_t abs_addr; ///< 绝对地址（虚拟地址）
+    uintptr_t offset;   ///< 相对于模块的偏移
+    int has_symbol;     ///< 是否成功解析符号
+    char* module;       ///< 模块名，C 字符串
 } sst_raw_frame;
 
 /// 栈回溯结构体，包含若干帧
@@ -92,6 +93,33 @@ void sst_print_stdout(const sst_backtrace* trace);
 void sst_resolve_to_raw(void* addr, sst_raw_frame* out);
 
 /**
+ * @brief 将一批地址批量转换为原始帧信息
+ * @param addrs 地址数组
+ * @param count 地址个数
+ * @param out [out] 输出数组，应至少具有 count 个元素空间
+ */
+void sst_resolve_raw_batch(void** addrs, size_t count, sst_raw_frame* outs);
+
+/**
+ * @brief 将一批目标 pid 的地址批量转换为原始帧信息
+ * @param target_pid 目标 pid
+ * @param addrs 地址数组
+ * @param count 地址个数
+ * @param out [out] 输出数组，应至少具有 count 个元素空间
+ * @note 调用后 outs 必须由调用方使用 sst_free_raw_frames 释放
+ */
+void sst_resolve_raw_batch_on_pid(pid_t target_pid, void** addrs, size_t count, sst_raw_frame* outs);
+
+/**
+ * @brief 将一批目标 pid 的地址批量转换为帧信息
+ * @param target_pid 目标 pid
+ * @param addrs 地址数组
+ * @param count 地址个数
+ * @param out [out] 输出数组，应至少具有 count 个元素空间
+ */
+void sst_resolve_batch_on_pid(pid_t target_pid, void** addrs, size_t count, sst_frame* outs);
+
+/**
  * @brief 批量释放一组 sst_raw_frame 中动态分配的模块名
  * 
  * 注意：仅释放每个 frame 的 module 字符串，不释放数组本身。
@@ -101,14 +129,6 @@ void sst_resolve_to_raw(void* addr, sst_raw_frame* out);
  * @param count 数组中的元素个数
  */
 void sst_free_raw_frames(sst_raw_frame* frames, size_t count);
-
-/**
- * @brief 将一批地址批量转换为原始帧信息
- * @param addrs 地址数组
- * @param count 地址个数
- * @param out [out] 输出数组，应至少具有 count 个元素空间
- */
-void sst_resolve_raw_batch(void** addrs, size_t count, sst_raw_frame* outs);
 
 #ifdef __cplusplus
 }

@@ -3,6 +3,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <vector>
 
 // this .cpp would compile to .so/.a, so `using namespace` is ok
 using namespace stacktrace;
@@ -109,21 +110,59 @@ void sst_resolve_to_raw(void* addr, sst_raw_frame* out) {
     }
 }
 
+void sst_resolve_raw_batch(void** addrs, size_t count, sst_raw_frame* outs) {
+    if (! addrs || ! outs || count == 0) return;
+
+    for (size_t i = 0; i < count; ++i) {
+        sst_resolve_to_raw(addrs[i], &outs[i]);
+    }
+}
+
+void sst_resolve_batch_on_pid(pid_t target_pid, void** addrs, size_t count, sst_frame* outs) {
+    if (! addrs || ! outs || count == 0) return;
+
+    std::vector<void*> addr_batch(addrs, addrs + count);
+
+    // 执行符号解析（注意：必须确保返回结果数量匹配）
+    std::vector<ResolvedFrame> frames = Stacktrace::resolve_on_pid(addr_batch, target_pid);
+
+    for (size_t i = 0; i < count; ++i) {
+        fill_frame_info(frames[i], &outs[i]);
+    }
+}
+
+void sst_resolve_raw_batch_on_pid(pid_t target_pid, void** addrs, size_t count, sst_raw_frame* outs) {
+    if (! addrs || ! outs || count == 0) return;
+
+    std::vector<void*> addr_batch(addrs, addrs + count);
+
+    // 执行符号解析（注意：必须确保返回结果数量匹配）
+    std::vector<RawFrame> rawframes = Stacktrace::resolve_to_raw_on_pid(addr_batch, target_pid);
+
+    for (size_t i = 0; i < count; ++i) {
+        const RawFrame& rf = rawframes[i];
+        sst_raw_frame& out = outs[i];
+
+        out.abs_addr = reinterpret_cast<uintptr_t>(rf.abs_addr);
+        out.offset = rf.offset;
+        out.has_symbol = rf.has_symbol;
+
+        // 避免重复 strdup 空字符串
+        if (! rf.module.empty()) {
+            out.module = strdup(rf.module.c_str()); // 必须由调用方负责释放
+        } else {
+            out.module = nullptr;
+        }
+    }
+}
+
 void sst_free_raw_frames(sst_raw_frame* frames, size_t count) {
-    if (! frames) return;
+    if (! frames || count == 0) return;
 
     for (size_t i = 0; i < count; ++i) {
         if (frames[i].module) {
             free(frames[i].module);
             frames[i].module = nullptr;
         }
-    }
-}
-
-void sst_resolve_raw_batch(void** addrs, size_t count, sst_raw_frame* outs) {
-    if (! addrs || ! outs) return;
-
-    for (size_t i = 0; i < count; ++i) {
-        sst_resolve_to_raw(addrs[i], &outs[i]);
     }
 }
