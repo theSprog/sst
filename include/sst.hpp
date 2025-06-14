@@ -12,7 +12,6 @@
 
 #include <cstdint>
 #include <ios>
-#include <stdexcept>
 #include <unordered_map>
 #include <vector>
 #include <string>
@@ -320,7 +319,9 @@ class ModuleManager {
     static void load_modules_from_proc_maps(Modules& modules, pid_t target_pid) {
         std::ifstream maps("/proc/" + std::to_string(target_pid) + "/maps");
         if (! maps.is_open()) {
-            throw std::invalid_argument("cannnot open maps from pid " + std::to_string(target_pid));
+            auto err_msg = "cannnot open maps from pid " + std::to_string(target_pid);
+            perror(err_msg.c_str());
+            return;
         }
 
         // pathname -> [start, end]
